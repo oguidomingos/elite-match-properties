@@ -10,33 +10,53 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CorretorRouteImport } from './routes/corretor'
+import { Route as FeedRouteImport } from './routes/feed'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CorretorRoute = CorretorRouteImport.update({
+  id: '/corretor',
+  path: '/corretor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeedRoute = FeedRouteImport.update({
+  id: '/feed',
+  path: '/feed',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/corretor': typeof CorretorRoute
+  '/feed': typeof FeedRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/corretor': typeof CorretorRoute
+  '/feed': typeof FeedRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/corretor': typeof CorretorRoute
+  '/feed': typeof FeedRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/corretor' | '/feed'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/corretor' | '/feed'
+  id: '__root__' | '/' | '/corretor' | '/feed'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CorretorRoute: typeof CorretorRoute
+  FeedRoute: typeof FeedRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +68,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/corretor': {
+      id: '/corretor'
+      path: '/corretor'
+      fullPath: '/corretor'
+      preLoaderRoute: typeof CorretorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/feed': {
+      id: '/feed'
+      path: '/feed'
+      fullPath: '/feed'
+      preLoaderRoute: typeof FeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CorretorRoute: CorretorRoute,
+  FeedRoute: FeedRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
