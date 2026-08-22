@@ -77,7 +77,7 @@ function Cadastro() {
   function enviar(e: React.FormEvent) {
     e.preventDefault();
     if (!valido) return;
-    const f = faixas[faixa];
+    const f = faixas[faixa] ?? faixas[1]!;
     store.addLead({
       id: novoId(),
       nome: nome.trim(),

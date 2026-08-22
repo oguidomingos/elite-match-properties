@@ -256,7 +256,7 @@ function FormImovel({ imoveis, editar }: { imoveis: Imovel[]; editar?: Imovel })
     quartos: 0,
     vagas: 0,
     tipo: "apartamento",
-    foto: imoveisIniciais[0].foto,
+    foto: imoveisIniciais[0]!.foto,
     diferenciais: [],
   };
   const [form, setForm] = useState<Imovel>(base);
