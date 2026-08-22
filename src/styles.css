@@ -152,3 +152,35 @@
     color: var(--color-foreground);
   }
 }
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+}
+
+@utility eyebrow {
+  font-size: 0.6875rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+}
+
+@utility gold-rule {
+  height: 1px;
+  width: 2.5rem;
+  background: linear-gradient(90deg, var(--gold), transparent);
+}
+
+@utility card-shadow {
+  box-shadow: 0 24px 60px -30px oklch(0.3 0.02 65 / 0.45);
+}
