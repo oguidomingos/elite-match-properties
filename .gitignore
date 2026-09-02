@@ -31,3 +31,6 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Segredos locais (nunca commitar)
+.env

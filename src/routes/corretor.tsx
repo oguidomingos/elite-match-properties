@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Heart, X, Pencil, Plus, MessageCircle } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Heart, X, Pencil, Plus, MessageCircle, LogOut } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,18 +15,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { useMmStore } from "@/hooks/use-mm-store";
+import { brl, brlCompacto, rotuloTipo, type Imovel } from "@/lib/matchmaker";
 import {
-  brl,
-  brlCompacto,
-  imoveisIniciais,
-  novoId,
-  rotuloTipo,
-  store,
-  type Imovel,
-  type Interacao,
-  type Lead,
-} from "@/lib/matchmaker";
+  enviarOtp,
+  entrarCorretor,
+  logout,
+  me,
+  painelImoveis,
+  painelLeads,
+  salvarImovel,
+} from "@/lib/api";
 
 export const Route = createFileRoute("/corretor")({
   head: () => ({
@@ -42,21 +42,152 @@ export const Route = createFileRoute("/corretor")({
       },
     ],
   }),
-  component: Painel,
+  component: Corretor,
 });
 
-function Painel() {
-  const imoveis = useMmStore<Imovel[]>(() => store.getImoveis(), imoveisIniciais);
-  const leads = useMmStore<Lead[]>(() => store.getLeads(), []);
-  const interacoes = useMmStore<Interacao[]>(() => store.getInteracoes(), []);
+function Corretor() {
+  const sessao = useQuery({ queryKey: ["me"], queryFn: () => me() });
+  if (sessao.isLoading) {
+    return (
+      <div className="grid min-h-screen place-items-center text-sm text-muted-foreground">
+        Carregando…
+      </div>
+    );
+  }
+  const ehCorretor = sessao.data?.usuario?.papel === "corretor";
+  return ehCorretor ? <Painel /> : <LoginCorretor />;
+}
 
+// ---------------------------- Login (OTP) ----------------------------
+function LoginCorretor() {
+  const qc = useQueryClient();
+  const [etapa, setEtapa] = useState<"whats" | "otp">("whats");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [codigo, setCodigo] = useState("");
+
+  const otp = useMutation({
+    mutationFn: () => enviarOtp({ data: { destino: whatsapp.trim(), canal: "whatsapp" } }),
+    onSuccess: () => {
+      setEtapa("otp");
+      toast.success("Código enviado", { description: "Confira seu WhatsApp." });
+    },
+    onError: (e: Error) => toast.error("Falha ao enviar", { description: e.message }),
+  });
+  const entrar = useMutation({
+    mutationFn: () =>
+      entrarCorretor({ data: { whatsapp: whatsapp.trim(), codigo: codigo.trim() } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+    onError: (e: Error) => toast.error("Não foi possível entrar", { description: e.message }),
+  });
+
+  return (
+    <main className="mx-auto grid min-h-screen w-full max-w-md place-items-center bg-background px-6">
+      <div className="w-full space-y-6">
+        <div className="text-center">
+          <p className="eyebrow">Painel do corretor</p>
+          <h1 className="mt-1 text-3xl">Acesso restrito</h1>
+        </div>
+        <div className="gold-rule" />
+        {etapa === "whats" ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (whatsapp.trim().length >= 8) otp.mutate();
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="w">WhatsApp do corretor</Label>
+              <Input
+                id="w"
+                inputMode="tel"
+                value={whatsapp}
+                onChange={(e) => setWhatsapp(e.target.value)}
+                placeholder="(61) 99999-0000"
+              />
+            </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={whatsapp.trim().length < 8 || otp.isPending}
+            >
+              {otp.isPending ? "Enviando…" : "Receber código"}
+            </Button>
+          </form>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (codigo.trim().length >= 4) entrar.mutate();
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="c">Código de acesso</Label>
+              <Input
+                id="c"
+                inputMode="numeric"
+                maxLength={6}
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ""))}
+                placeholder="000000"
+                className="text-center text-2xl tracking-[0.5em]"
+              />
+            </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={codigo.trim().length < 4 || entrar.isPending}
+            >
+              {entrar.isPending ? "Entrando…" : "Entrar"}
+            </Button>
+            <button
+              type="button"
+              className="w-full text-center text-xs text-muted-foreground underline underline-offset-4"
+              onClick={() => setEtapa("whats")}
+            >
+              Usar outro número
+            </button>
+          </form>
+        )}
+        <p className="text-center text-xs text-muted-foreground">
+          <Link to="/" className="text-gold underline underline-offset-4">
+            Abrir a experiência do cliente
+          </Link>
+        </p>
+      </div>
+    </main>
+  );
+}
+
+// ---------------------------- Painel ----------------------------
+function Painel() {
+  const qc = useQueryClient();
+  const imoveisQ = useQuery({ queryKey: ["painel-imoveis"], queryFn: () => painelImoveis() });
+  const leadsQ = useQuery({ queryKey: ["painel-leads"], queryFn: () => painelLeads() });
+
+  const imoveis = imoveisQ.data ?? [];
+  const leads = leadsQ.data?.leads ?? [];
+  const interacoes = leadsQ.data?.interacoes ?? [];
   const likes = interacoes.filter((i) => i.acao === "like");
+
+  const sair = useMutation({
+    mutationFn: () => logout(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+  });
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-md bg-background pb-16">
       <header className="border-b border-border px-6 pb-5 pt-7">
-        <p className="eyebrow">Painel do corretor</p>
-        <h1 className="mt-1 text-3xl">Interesses em tempo real</h1>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="eyebrow">Painel do corretor</p>
+            <h1 className="mt-1 text-3xl">Interesses em tempo real</h1>
+          </div>
+          <Button variant="ghost" size="icon" aria-label="Sair" onClick={() => sair.mutate()}>
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </div>
         <div className="mt-4 grid grid-cols-3 gap-3 text-center">
           <Metrica valor={leads.length} rotulo="leads" />
           <Metrica valor={likes.length} rotulo="likes" />
@@ -78,10 +209,7 @@ function Painel() {
             const imovel = imoveis.find((p) => p.id === i.imovelId);
             if (!imovel) return null;
             return (
-              <div
-                key={i.id}
-                className="rounded-lg border border-border bg-card p-4 card-shadow"
-              >
+              <div key={i.id} className="rounded-lg border border-border bg-card p-4 card-shadow">
                 <div className="flex items-start gap-3">
                   <img
                     src={imovel.foto}
@@ -180,7 +308,7 @@ function Painel() {
         </TabsContent>
 
         <TabsContent value="imoveis" className="space-y-3 pt-6">
-          <FormImovel imoveis={imoveis} />
+          <FormImovel />
           {imoveis.map((imovel) => (
             <div
               key={imovel.id}
@@ -197,24 +325,16 @@ function Painel() {
               <div className="min-w-0 flex-1">
                 <p className="truncate font-display text-lg">{imovel.titulo}</p>
                 <p className="text-xs text-muted-foreground">
-                  {brl(imovel.preco)} · {imovel.area} m² · {imovel.quartos} quartos ·{" "}
-                  {imovel.vagas} vagas
+                  {brl(imovel.preco)} · {imovel.area} m² · {imovel.quartos} quartos · {imovel.vagas}{" "}
+                  vagas
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {imovel.bairro}, {imovel.cidade}
                 </p>
               </div>
-              <FormImovel imoveis={imoveis} editar={imovel} />
+              <FormImovel editar={imovel} />
             </div>
           ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full text-muted-foreground"
-            onClick={() => store.reset()}
-          >
-            Reiniciar dados do protótipo
-          </Button>
         </TabsContent>
       </Tabs>
 
@@ -244,38 +364,52 @@ function Vazio({ texto }: { texto: string }) {
   );
 }
 
-function FormImovel({ imoveis, editar }: { imoveis: Imovel[]; editar?: Imovel }) {
-  const [aberto, setAberto] = useState(false);
-  const base: Imovel = editar ?? {
-    id: novoId(),
-    titulo: "",
-    bairro: "",
-    cidade: "",
-    preco: 0,
-    area: 0,
-    quartos: 0,
-    vagas: 0,
-    tipo: "apartamento",
-    foto: imoveisIniciais[0]!.foto,
-    diferenciais: [],
-  };
-  const [form, setForm] = useState<Imovel>(base);
-  const [difs, setDifs] = useState(base.diferenciais.join(", "));
+const IMOVEL_VAZIO = {
+  titulo: "",
+  bairro: "",
+  cidade: "",
+  preco: 0,
+  area: 0,
+  quartos: 0,
+  vagas: 0,
+  tipo: "apartamento" as const,
+  foto: "/imoveis/imovel-1.jpg",
+  diferenciais: [] as string[],
+};
 
-  function salvar() {
-    const atualizado: Imovel = {
-      ...form,
-      diferenciais: difs
-        .split(",")
-        .map((d) => d.trim())
-        .filter(Boolean),
-    };
-    const existe = imoveis.some((i) => i.id === atualizado.id);
-    store.setImoveis(
-      existe ? imoveis.map((i) => (i.id === atualizado.id ? atualizado : i)) : [...imoveis, atualizado],
-    );
-    setAberto(false);
-  }
+function FormImovel({ editar }: { editar?: Imovel }) {
+  const qc = useQueryClient();
+  const [aberto, setAberto] = useState(false);
+  const [form, setForm] = useState(() => editar ?? IMOVEL_VAZIO);
+  const [difs, setDifs] = useState((editar?.diferenciais ?? []).join(", "));
+
+  const salvar = useMutation({
+    mutationFn: () =>
+      salvarImovel({
+        data: {
+          ...(editar ? { id: editar.id } : {}),
+          titulo: form.titulo,
+          bairro: form.bairro,
+          cidade: form.cidade,
+          preco: Number(form.preco) || 0,
+          area: Number(form.area) || 0,
+          quartos: Number(form.quartos) || 0,
+          vagas: Number(form.vagas) || 0,
+          tipo: form.tipo,
+          foto: form.foto || "/imoveis/imovel-1.jpg",
+          diferenciais: difs
+            .split(",")
+            .map((d) => d.trim())
+            .filter(Boolean),
+        },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["painel-imoveis"] });
+      setAberto(false);
+      toast.success(editar ? "Imóvel atualizado" : "Imóvel adicionado");
+    },
+    onError: (e: Error) => toast.error("Falha ao salvar", { description: e.message }),
+  });
 
   return (
     <Dialog open={aberto} onOpenChange={setAberto}>
@@ -343,14 +477,18 @@ function FormImovel({ imoveis, editar }: { imoveis: Imovel[]; editar?: Imovel })
             />
           </div>
           <Campo
-            label="Diferenciais (separados por vírgula)"
-            value={difs}
-            onChange={setDifs}
+            label="Foto (URL)"
+            value={form.foto}
+            onChange={(v) => setForm({ ...form, foto: v })}
           />
+          <Campo label="Diferenciais (separados por vírgula)" value={difs} onChange={setDifs} />
         </div>
         <DialogFooter>
-          <Button onClick={salvar} disabled={!form.titulo.trim()}>
-            Salvar
+          <Button
+            onClick={() => salvar.mutate()}
+            disabled={!form.titulo.trim() || salvar.isPending}
+          >
+            {salvar.isPending ? "Salvando…" : "Salvar"}
           </Button>
         </DialogFooter>
       </DialogContent>

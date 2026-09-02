@@ -1,12 +1,14 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { novoId, rotuloTipo, store, type TipoImovel } from "@/lib/matchmaker";
-import heroImg from "@/assets/imovel-1.jpg";
+import { rotuloTipo, type TipoImovel } from "@/lib/matchmaker";
+import { confirmarLead, enviarOtp } from "@/lib/api";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -64,6 +66,7 @@ function Chip({
 
 function Cadastro() {
   const navigate = useNavigate();
+  const [etapa, setEtapa] = useState<"form" | "otp">("form");
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [faixa, setFaixa] = useState(1);
@@ -71,33 +74,46 @@ function Cadastro() {
   const [tipo, setTipo] = useState<TipoImovel>("apartamento");
   const [quartos, setQuartos] = useState(3);
   const [desejo, setDesejo] = useState("");
+  const [codigo, setCodigo] = useState("");
 
   const valido = nome.trim().length > 1 && whatsapp.trim().length >= 8 && regiao.trim().length > 1;
 
-  function enviar(e: React.FormEvent) {
-    e.preventDefault();
-    if (!valido) return;
-    const f = faixas[faixa] ?? faixas[1]!;
-    store.addLead({
-      id: novoId(),
-      nome: nome.trim(),
-      whatsapp: whatsapp.trim(),
-      orcamentoMin: f.min,
-      orcamentoMax: f.max,
-      regiao: regiao.trim(),
-      tipo,
-      quartos,
-      desejo: desejo.trim(),
-      criadoEm: Date.now(),
-    });
-    navigate({ to: "/feed" });
-  }
+  const otp = useMutation({
+    mutationFn: () => enviarOtp({ data: { destino: whatsapp.trim(), canal: "whatsapp" } }),
+    onSuccess: () => {
+      setEtapa("otp");
+      toast.success("Código enviado", { description: "Confira seu WhatsApp." });
+    },
+    onError: (e: Error) =>
+      toast.error("Não foi possível enviar o código", { description: e.message }),
+  });
+
+  const confirmar = useMutation({
+    mutationFn: () => {
+      const f = faixas[faixa] ?? faixas[1]!;
+      return confirmarLead({
+        data: {
+          nome: nome.trim(),
+          whatsapp: whatsapp.trim(),
+          orcamentoMin: f.min,
+          orcamentoMax: f.max,
+          regiao: regiao.trim(),
+          tipo,
+          quartos,
+          desejo: desejo.trim(),
+          codigo: codigo.trim(),
+        },
+      });
+    },
+    onSuccess: () => navigate({ to: "/feed" }),
+    onError: (e: Error) => toast.error("Código inválido", { description: e.message }),
+  });
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-md bg-background pb-16">
       <header className="relative h-64 overflow-hidden">
         <img
-          src={heroImg}
+          src="/imoveis/imovel-1.jpg"
           alt="Sala de estar de cobertura de alto padrão com vista para a cidade"
           width={1024}
           height={1280}
@@ -114,98 +130,161 @@ function Cadastro() {
         </div>
       </header>
 
-      <form onSubmit={enviar} className="space-y-7 px-6 pt-8">
-        <p className="text-sm text-muted-foreground">
-          Seis perguntas rápidas. Em seguida você desliza por uma seleção feita para o seu perfil.
-        </p>
-        <div className="gold-rule" />
+      {etapa === "form" ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (valido) otp.mutate();
+          }}
+          className="space-y-7 px-6 pt-8"
+        >
+          <p className="text-sm text-muted-foreground">
+            Seis perguntas rápidas. Confirmamos seu WhatsApp por um código e você desliza por uma
+            seleção feita para o seu perfil.
+          </p>
+          <div className="gold-rule" />
 
-        <div className="space-y-2">
-          <Label htmlFor="nome">Nome completo</Label>
-          <Input
-            id="nome"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-            placeholder="Como podemos te chamar?"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="whatsapp">WhatsApp</Label>
-          <Input
-            id="whatsapp"
-            inputMode="tel"
-            value={whatsapp}
-            onChange={(e) => setWhatsapp(e.target.value)}
-            placeholder="(11) 99999-0000"
-          />
-        </div>
-
-        <div className="space-y-3">
-          <Label>Orçamento</Label>
-          <div className="flex flex-wrap gap-2">
-            {faixas.map((f, i) => (
-              <Chip key={f.label} ativo={faixa === i} onClick={() => setFaixa(i)}>
-                {f.label}
-              </Chip>
-            ))}
+          <div className="space-y-2">
+            <Label htmlFor="nome">Nome completo</Label>
+            <Input
+              id="nome"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              placeholder="Como podemos te chamar?"
+            />
           </div>
-        </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="regiao">Região de interesse</Label>
-          <Input
-            id="regiao"
-            value={regiao}
-            onChange={(e) => setRegiao(e.target.value)}
-            placeholder="Jardins, Itaim, Alphaville…"
-          />
-        </div>
-
-        <div className="space-y-3">
-          <Label>Tipo de imóvel</Label>
-          <div className="flex flex-wrap gap-2">
-            {tipos.map((t) => (
-              <Chip key={t} ativo={tipo === t} onClick={() => setTipo(t)}>
-                {rotuloTipo[t]}
-              </Chip>
-            ))}
+          <div className="space-y-2">
+            <Label htmlFor="whatsapp">WhatsApp</Label>
+            <Input
+              id="whatsapp"
+              inputMode="tel"
+              value={whatsapp}
+              onChange={(e) => setWhatsapp(e.target.value)}
+              placeholder="(11) 99999-0000"
+            />
           </div>
-        </div>
 
-        <div className="space-y-3">
-          <Label>Quartos desejados</Label>
-          <div className="flex flex-wrap gap-2">
-            {quartosOpts.map((q) => (
-              <Chip key={q} ativo={quartos === q} onClick={() => setQuartos(q)}>
-                {q === 5 ? "5+" : q}
-              </Chip>
-            ))}
+          <div className="space-y-3">
+            <Label>Orçamento</Label>
+            <div className="flex flex-wrap gap-2">
+              {faixas.map((f, i) => (
+                <Chip key={f.label} ativo={faixa === i} onClick={() => setFaixa(i)}>
+                  {f.label}
+                </Chip>
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="desejo">O que não pode faltar no seu imóvel ideal?</Label>
-          <Textarea
-            id="desejo"
-            rows={4}
-            value={desejo}
-            onChange={(e) => setDesejo(e.target.value)}
-            placeholder="Vista livre, varanda gourmet, pé-direito alto, silêncio…"
-          />
-        </div>
+          <div className="space-y-2">
+            <Label htmlFor="regiao">Região de interesse</Label>
+            <Input
+              id="regiao"
+              value={regiao}
+              onChange={(e) => setRegiao(e.target.value)}
+              placeholder="Jardins, Itaim, Alphaville…"
+            />
+          </div>
 
-        <Button type="submit" size="lg" className="w-full" disabled={!valido}>
-          Ver minha seleção
-        </Button>
+          <div className="space-y-3">
+            <Label>Tipo de imóvel</Label>
+            <div className="flex flex-wrap gap-2">
+              {tipos.map((t) => (
+                <Chip key={t} ativo={tipo === t} onClick={() => setTipo(t)}>
+                  {rotuloTipo[t]}
+                </Chip>
+              ))}
+            </div>
+          </div>
 
-        <p className="pt-2 text-center text-xs text-muted-foreground">
-          É corretor?{" "}
-          <Link to="/corretor" className="text-gold underline underline-offset-4">
-            Acessar painel
-          </Link>
-        </p>
-      </form>
+          <div className="space-y-3">
+            <Label>Quartos desejados</Label>
+            <div className="flex flex-wrap gap-2">
+              {quartosOpts.map((q) => (
+                <Chip key={q} ativo={quartos === q} onClick={() => setQuartos(q)}>
+                  {q === 5 ? "5+" : q}
+                </Chip>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="desejo">O que não pode faltar no seu imóvel ideal?</Label>
+            <Textarea
+              id="desejo"
+              rows={4}
+              value={desejo}
+              onChange={(e) => setDesejo(e.target.value)}
+              placeholder="Vista livre, varanda gourmet, pé-direito alto, silêncio…"
+            />
+          </div>
+
+          <Button type="submit" size="lg" className="w-full" disabled={!valido || otp.isPending}>
+            {otp.isPending ? "Enviando código…" : "Ver minha seleção"}
+          </Button>
+
+          <p className="pt-2 text-center text-xs text-muted-foreground">
+            É corretor?{" "}
+            <Link to="/corretor" className="text-gold underline underline-offset-4">
+              Acessar painel
+            </Link>
+          </p>
+        </form>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (codigo.trim().length >= 4) confirmar.mutate();
+          }}
+          className="space-y-6 px-6 pt-8"
+        >
+          <div className="gold-rule" />
+          <div className="space-y-2">
+            <h2 className="text-2xl">Confirme seu WhatsApp</h2>
+            <p className="text-sm text-muted-foreground">
+              Enviamos um código de 6 dígitos para{" "}
+              <span className="text-foreground">{whatsapp}</span>.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="codigo">Código de acesso</Label>
+            <Input
+              id="codigo"
+              inputMode="numeric"
+              maxLength={6}
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ""))}
+              placeholder="000000"
+              className="text-center text-2xl tracking-[0.5em]"
+            />
+          </div>
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full"
+            disabled={codigo.trim().length < 4 || confirmar.isPending}
+          >
+            {confirmar.isPending ? "Validando…" : "Ver minha seleção"}
+          </Button>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <button
+              type="button"
+              className="underline underline-offset-4"
+              onClick={() => setEtapa("form")}
+            >
+              Corrigir dados
+            </button>
+            <button
+              type="button"
+              className="text-gold underline underline-offset-4 disabled:opacity-50"
+              disabled={otp.isPending}
+              onClick={() => otp.mutate()}
+            >
+              Reenviar código
+            </button>
+          </div>
+        </form>
+      )}
     </main>
   );
 }

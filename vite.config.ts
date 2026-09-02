@@ -8,7 +8,7 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 // GH Pages project-site deploy: set GH_PAGES_BASE="/elite-match-properties/" to
 // build a static SPA under that subpath. Leaving it unset keeps normal dev/SSR.
-const ghPagesBase = process.env.GH_PAGES_BASE;
+const ghPagesBase = process.env["GH_PAGES_BASE"];
 
 export default defineConfig({
   ...(ghPagesBase ? { vite: { base: ghPagesBase } } : {}),

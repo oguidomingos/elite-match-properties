@@ -1,8 +1,19 @@
 # Elite Match Properties
 
-Crie um protótipo de matchmaker de imóveis estilo "swipe" (parecido com Tinder), voltado para corretores de imóveis de alto padrão.
+> **Status: produção.** O protótipo virou app full-stack real — auth por OTP
+> (WhatsApp), Postgres dedicado, server functions e painéis cliente/corretor
+> integrados às APIs. Arquitetura e deploy em **[DEPLOY.md](./DEPLOY.md)**.
+>
+> Stack: TanStack Start (SSR/Nitro) · Postgres 16 · Evolution API (OTP) · pm2 · bun.
+> Persistência real substituiu o `localStorage`; dados em `src/lib/api.ts`
+> (server functions) sobre `src/lib/{db,auth,evolution}.server.ts`.
+
+---
+
+Matchmaker de imóveis estilo "swipe" (parecido com Tinder), voltado para corretores de imóveis de alto padrão.
 
 Fluxo principal:
+
 1. Tela de cadastro do CLIENTE (lead): nome, WhatsApp, orçamento (faixa de valor), região de interesse, tipo de imóvel (casa/apto/terreno/comercial), número de quartos desejado, e uma pergunta aberta "o que não pode faltar no seu imóvel ideal?"
 2. Depois do cadastro, o cliente vê um feed de cards de imóveis (foto grande, preço, metragem, bairro, 2-3 diferenciais em destaque) que ele desliza: like (quero visitar) ou dislike (não é isso).
 3. Cada "like" dispara automaticamente uma notificação/resumo pro corretor (pode simular como um painel admin simples) mostrando quem curtiu o quê, pra ele já entrar em contato puxando gancho certo.
@@ -10,7 +21,9 @@ Fluxo principal:
 
 Estilo visual: alto padrão, minimalista, cores neutras com um acento em dourado/bronze, tipografia serifada no título e sans-serif no corpo, mobile-first (esse app vai ser usado principalmente no celular via link do WhatsApp).
 
-Não precisa de backend real robusto — pode usar dados mockados/local storage pra esse protótipo, o objetivo é mostrar o conceito de UX pro cliente aprovar antes de construir de verdade.
+O protótipo original usava dados mockados/localStorage só para validar a UX. Esta
+versão já é o backend real: cadastro e login por OTP, banco Postgres, notificação
+do corretor no WhatsApp a cada like e CRUD de imóveis no painel.
 
 This project was built with [Lovable](https://lovable.dev).
 

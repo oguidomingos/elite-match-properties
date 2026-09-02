@@ -1,0 +1,23 @@
+# Postgres dedicado do Elite Match Properties (isolado dos demais serviços da VPS).
+# Sobe em 127.0.0.1:5435 — não exposto publicamente.
+services:
+  elite-match-db:
+    image: postgres:16-alpine
+    container_name: elite-match-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: elitematch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-elitematch_local}
+      POSTGRES_DB: elitematch
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - elite_match_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elitematch -d elitematch"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  elite_match_pgdata:

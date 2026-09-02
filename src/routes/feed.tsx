@@ -1,19 +1,12 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useRef, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Heart, X, MapPin, Ruler, BedDouble, Car } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useMmStore } from "@/hooks/use-mm-store";
-import {
-  brlCompacto,
-  novoId,
-  rotuloTipo,
-  store,
-  type Imovel,
-  type Lead,
-  imoveisIniciais,
-} from "@/lib/matchmaker";
+import { brlCompacto, rotuloTipo, type Imovel } from "@/lib/matchmaker";
+import { feedImoveis, me, registrarInteracao } from "@/lib/api";
 
 export const Route = createFileRoute("/feed")({
   head: () => ({
@@ -25,45 +18,48 @@ export const Route = createFileRoute("/feed")({
           "Deslize pelos imóveis selecionados: curta os que quer visitar e o corretor entra em contato.",
       },
       { property: "og:title", content: "Sua seleção de imóveis | Matchmaker Alto Padrão" },
-      {
-        property: "og:description",
-        content: "Deslize, curta e agende sua visita com o corretor.",
-      },
+      { property: "og:description", content: "Deslize, curta e agende sua visita com o corretor." },
     ],
   }),
   component: Feed,
 });
 
 function Feed() {
-  const imoveis = useMmStore<Imovel[]>(() => store.getImoveis(), imoveisIniciais);
-  const leads = useMmStore<Lead[]>(() => store.getLeads(), []);
-  const leadId = useMmStore<string | null>(() => store.getLeadAtualId(), null);
-  const lead = useMemo(() => leads.find((l) => l.id === leadId) ?? null, [leads, leadId]);
+  const navigate = useNavigate();
+  const sessao = useQuery({ queryKey: ["me"], queryFn: () => me() });
+  const feed = useQuery({ queryKey: ["feed"], queryFn: () => feedImoveis() });
 
+  // Sem cadastro/sessão -> volta pro início.
+  useEffect(() => {
+    if (sessao.isSuccess && !sessao.data.usuario) navigate({ to: "/" });
+  }, [sessao.isSuccess, sessao.data, navigate]);
+
+  const imoveis = feed.data?.imoveis ?? [];
   const [indice, setIndice] = useState(0);
+  const [curtidos, setCurtidos] = useState(0);
+  useEffect(() => setCurtidos(feed.data?.curtidos ?? 0), [feed.data?.curtidos]);
+
   const [drag, setDrag] = useState(0);
   const [saindo, setSaindo] = useState<"like" | "dislike" | null>(null);
   const inicio = useRef<number | null>(null);
 
+  const registrar = useMutation({
+    mutationFn: (v: { imovelId: string; acao: "like" | "dislike" }) =>
+      registrarInteracao({ data: v }),
+    onError: (e: Error) => toast.error("Falha ao registrar", { description: e.message }),
+  });
+
   const atual = imoveis[indice];
   const proximo = imoveis[indice + 1];
-  const curtidos = useMmStore(
-    () => store.getInteracoes().filter((i) => i.acao === "like" && i.leadId === store.getLeadAtualId()).length,
-    0,
-  );
+  const nome = sessao.data?.lead?.nome ?? sessao.data?.usuario?.nome ?? "";
 
   function decidir(acao: "like" | "dislike") {
     if (!atual || saindo) return;
     setSaindo(acao);
+    registrar.mutate({ imovelId: atual.id, acao });
     window.setTimeout(() => {
-      store.addInteracao({
-        id: novoId(),
-        leadId: leadId ?? "anonimo",
-        imovelId: atual.id,
-        acao,
-        criadoEm: Date.now(),
-      });
       if (acao === "like") {
+        setCurtidos((c) => c + 1);
         toast.success("Corretor avisado", {
           description: `Enviamos seu interesse em ${atual.titulo}.`,
         });
@@ -93,13 +89,14 @@ function Feed() {
 
   const deslocamento = saindo ? (saindo === "like" ? 500 : -500) : drag;
   const rotacao = deslocamento / 22;
+  const carregando = feed.isLoading || sessao.isLoading;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-background">
       <header className="flex items-center justify-between px-6 pb-4 pt-6">
         <div>
           <p className="eyebrow">Seleção curada</p>
-          <h1 className="text-2xl">{lead ? `Olá, ${lead.nome.split(" ")[0]}` : "Sua seleção"}</h1>
+          <h1 className="text-2xl">{nome ? `Olá, ${nome.split(" ")[0]}` : "Sua seleção"}</h1>
         </div>
         <div className="text-right">
           <p className="font-display text-2xl text-gold">{curtidos}</p>
@@ -109,7 +106,13 @@ function Feed() {
 
       <section className="relative flex-1 px-5">
         <div className="relative h-[560px] select-none">
-          {!atual && (
+          {carregando && (
+            <div className="flex h-full items-center justify-center rounded-xl border border-border bg-card text-sm text-muted-foreground card-shadow">
+              Carregando sua seleção…
+            </div>
+          )}
+
+          {!carregando && !atual && (
             <div className="flex h-full flex-col items-center justify-center rounded-xl border border-border bg-card px-8 text-center card-shadow">
               <h2 className="text-3xl">Tudo visto</h2>
               <p className="mt-3 text-sm text-muted-foreground">
@@ -117,7 +120,7 @@ function Feed() {
                 as opções mais próximas do seu perfil.
               </p>
               <Button asChild variant="outline" className="mt-6">
-                <Link to="/corretor">Ver painel do corretor</Link>
+                <Link to="/">Voltar ao início</Link>
               </Button>
             </div>
           )}
